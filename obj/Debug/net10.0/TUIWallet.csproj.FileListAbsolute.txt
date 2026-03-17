@@ -1,0 +1,4 @@
+C:\Users\esrom\C#_projects\TUIWallet\obj\Debug\net10.0\TUIWallet.GeneratedMSBuildEditorConfig.editorconfig
+C:\Users\esrom\C#_projects\TUIWallet\obj\Debug\net10.0\TUIWallet.AssemblyInfoInputs.cache
+C:\Users\esrom\C#_projects\TUIWallet\obj\Debug\net10.0\TUIWallet.AssemblyInfo.cs
+C:\Users\esrom\C#_projects\TUIWallet\obj\Debug\net10.0\TUIWallet.csproj.CoreCompileInputs.cache

@@ -1,0 +1,28 @@
+# Build output
+bin/
+obj/
+publish/
+
+# Visual Studio
+.vs/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# Rider
+.idea/
+
+# VS Code
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Sensitive — wallet files live in %APPDATA%, not here
+# (just in case someone accidentally puts them in the project folder)
+wallet.json
+wallet_*.json
+active.txt
+active_testnet.txt
