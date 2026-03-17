@@ -2,7 +2,7 @@
 
 A fully featured Bitcoin wallet that runs entirely in your terminal. No browser, no Electron, no GUI — just a fast, keyboard-driven TUI with live price charts, multi-wallet support, and vanity address generation.
 
-![TUIWallet Main Screen](assets/screenshot-main.png)
+![TUIWallet Main Screen](assets/TUIWallet.png)
 
 ---
 
