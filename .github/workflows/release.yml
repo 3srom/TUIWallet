@@ -1,0 +1,87 @@
+name: Build & Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'          # triggers on tags like v1.0.0, v1.2.3
+  workflow_dispatch:       # also allows manual trigger from GitHub UI
+
+jobs:
+  build:
+    name: Build self-contained binaries
+    runs-on: windows-latest   # Windows build for .exe
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Restore dependencies
+        run: dotnet restore
+
+      # ── Windows x64 (self-contained, single .exe) ──────────────────────────
+      - name: Publish Windows x64
+        run: |
+          dotnet publish -c Release -r win-x64 `
+            --self-contained true `
+            -p:PublishSingleFile=true `
+            -p:IncludeNativeLibrariesForSelfExtract=true `
+            -o ./publish/win-x64
+
+      - name: Zip Windows build
+        run: |
+          Compress-Archive `
+            -Path ./publish/win-x64/TUIWallet.exe `
+            -DestinationPath ./publish/TUIWallet-win-x64.zip
+
+      # ── Linux x64 (self-contained) ─────────────────────────────────────────
+      - name: Publish Linux x64
+        run: |
+          dotnet publish -c Release -r linux-x64 `
+            --self-contained true `
+            -p:PublishSingleFile=true `
+            -p:IncludeNativeLibrariesForSelfExtract=true `
+            -o ./publish/linux-x64
+
+      - name: Zip Linux build
+        run: |
+          Compress-Archive `
+            -Path ./publish/linux-x64/TUIWallet `
+            -DestinationPath ./publish/TUIWallet-linux-x64.zip
+
+      # ── Create GitHub Release with both zips ──────────────────────────────
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "TUIWallet ${{ github.ref_name }}"
+          body: |
+            ## TUIWallet ${{ github.ref_name }}
+
+            ### Downloads
+            | Platform | File |
+            |----------|------|
+            | Windows x64 | `TUIWallet-win-x64.zip` |
+            | Linux x64   | `TUIWallet-linux-x64.zip` |
+
+            ### What's included
+            - Self-contained binary — no .NET installation needed
+            - VanitySearch will be auto-downloaded on first use of the Vanity feature
+
+            ### Quick start
+            1. Extract the zip
+            2. Run `TUIWallet.exe` (Windows) or `./TUIWallet` (Linux)
+            3. Use `--testnet` flag to test with free testnet BTC first
+
+            ### Credits
+            Vanity address generation powered by [VanitySearch](https://github.com/JeanLucPons/VanitySearch) by Jean-Luc Pons.
+          files: |
+            ./publish/TUIWallet-win-x64.zip
+            ./publish/TUIWallet-linux-x64.zip
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
