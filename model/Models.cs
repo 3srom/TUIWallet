@@ -58,6 +58,25 @@ namespace TUIWallet.Models
             lock (_lock) return _hourlyPrices.ToArray();
         }
 
+        /// <summary>
+        /// Seeds the chart with historical hourly closes fetched at startup.
+        /// Call once before the WebSocket starts streaming.
+        /// </summary>
+        public void Seed(decimal[] historicalCloses)
+        {
+            lock (_lock)
+            {
+                _hourlyPrices.Clear();
+                foreach (var p in historicalCloses)
+                    _hourlyPrices.Add(p);
+                if (_hourlyPrices.Count > 200)
+                    _hourlyPrices.RemoveRange(0, _hourlyPrices.Count - 200);
+                // Set current price to last close so chart has a starting point
+                if (historicalCloses.Length > 0)
+                    _price = historicalCloses[^1];
+            }
+        }
+
         public void Update(decimal newPrice)
         {
             lock (_lock)

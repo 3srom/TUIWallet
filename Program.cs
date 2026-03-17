@@ -34,6 +34,17 @@ namespace TUIWallet
             var priceCts = new CancellationTokenSource();
             _ = Task.Run(() => RunPriceStreamAsync(ticker, priceCts.Token));
 
+            // ── Seed chart with last 168 hours (1 week) of history ────────────────
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    var closes = await FetchKlineHistoryAsync(testnet);
+                    if (closes.Length > 0) ticker.Seed(closes);
+                }
+                catch { /* non-critical, chart just starts empty */ }
+            });
+
             // ── First-run or unlock ───────────────────────────────────────────────
             if (!service.HasWallet)
             {
@@ -369,6 +380,38 @@ namespace TUIWallet
 
             renderer.ShowMessage($"VanitySearch installed!\n{bin}", isError: false);
             return bin;
+        }
+
+        // ── Binance kline history (seeds the chart on startup) ───────────────────
+
+        private static async Task<decimal[]> FetchKlineHistoryAsync(bool testnet)
+        {
+            // Use testnet prices from Binance testnet, or mainnet for real
+            // Binance klines: GET /api/v3/klines?symbol=BTCUSDT&interval=1h&limit=168
+            string baseUrl = "https://api.binance.com";
+            string url = $"{baseUrl}/api/v3/klines?symbol=BTCUSDT&interval=1h&limit=168";
+
+            using var hc = new System.Net.Http.HttpClient();
+            hc.DefaultRequestHeaders.Add("User-Agent", "TUIWallet/1.0");
+            hc.Timeout = TimeSpan.FromSeconds(10);
+
+            var json = await hc.GetStringAsync(url);
+            // Response: [[openTime, open, high, low, close, ...], ...]
+            var arr = System.Text.Json.Nodes.JsonNode.Parse(json) as System.Text.Json.Nodes.JsonArray;
+            if (arr is null) return Array.Empty<decimal>();
+
+            var closes = new System.Collections.Generic.List<decimal>();
+            foreach (var candle in arr)
+            {
+                // Index 4 = close price (as string)
+                var closeStr = candle?[4]?.ToString();
+                if (closeStr != null && decimal.TryParse(closeStr,
+                    System.Globalization.NumberStyles.Any,
+                    System.Globalization.CultureInfo.InvariantCulture,
+                    out decimal close))
+                    closes.Add(close);
+            }
+            return closes.ToArray();
         }
 
         // ── Binance WebSocket price stream ────────────────────────────────────────

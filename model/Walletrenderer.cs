@@ -972,6 +972,7 @@ namespace TUIWallet.Models
             decimal live = ticker.Price;
             if (history.Length == 0 && live == 0m) return;
 
+            // Combine history with the live price as the rightmost point
             decimal[] points;
             if (live > 0m)
             {
@@ -983,76 +984,167 @@ namespace TUIWallet.Models
 
             if (points.Length < 2) return;
 
-            int chartTop = 2, chartBottom = h - 2;
+            // Chart area: rows 2 to h-2, leave top and bottom for UI
+            int chartTop = 2;
+            int chartBottom = h - 2;
             int chartH = chartBottom - chartTop;
-            if (chartH < 3) return;
+            if (chartH < 4) return;
 
-            int maxPoints = w - 2;
+            // Fit as many points as columns, right-anchored so newest is at right
+            int maxPoints = w - 1;
             int startIdx = Math.Max(0, points.Length - maxPoints);
-            var visible = new ArraySegment<decimal>(points, startIdx, points.Length - startIdx);
+            int count = points.Length - startIdx;
+            var visible = new decimal[count];
+            Array.Copy(points, startIdx, visible, 0, count);
 
+            // Scale: find min/max with a small padding so line doesn't hug edges
             decimal min = decimal.MaxValue, max = decimal.MinValue;
             foreach (var p in visible) { if (p < min) min = p; if (p > max) max = p; }
-            if (min == max) max = min + 1;
+            if (min == max) { min -= 1; max += 1; }
+            decimal pad = (max - min) * 0.08m;   // 8% padding top and bottom
+            min -= pad; max += pad;
+            decimal range = max - min;
 
             int PriceToRow(decimal price)
             {
-                double ratio = (double)((price - min) / (max - min));
+                double ratio = (double)((price - min) / range);
+                // ratio=0 → bottom, ratio=1 → top
                 return Math.Clamp(chartBottom - (int)(ratio * chartH), chartTop, chartBottom);
             }
 
+            // Which rows have important UI — chart dims there
             var uiRows = BuildUiRowSet(h);
-            int[] rows = new int[visible.Count];
-            for (int i = 0; i < visible.Count; i++) rows[i] = PriceToRow(visible[i]);
 
-            int originX = w - 2 - (visible.Count - 1);
-            for (int i = 0; i < visible.Count - 1; i++)
-                DrawLineSegment(originX + i, rows[i], originX + i + 1, rows[i + 1],
-                                uiRows, w, chartTop, chartBottom);
+            // ── Draw the line ─────────────────────────────────────────────────────
+            // Right-anchor: last point sits at column w-2
+            int originX = w - 2 - (count - 1);
 
-            int liveX = w - 2, liveRow = rows[visible.Count - 1];
+            // Map every point to its row
+            int[] rows = new int[count];
+            for (int i = 0; i < count; i++)
+                rows[i] = PriceToRow(visible[i]);
+
+            // Determine up/down colour for each segment based on local direction
+            for (int i = 0; i < count - 1; i++)
+            {
+                int x0 = originX + i;
+                int x1 = originX + i + 1;
+                int y0 = rows[i];
+                int y1 = rows[i + 1];
+
+                if (x1 < 0) continue;  // off-screen left
+
+                bool rising = y1 < y0; // lower row number = higher on screen = higher price
+
+                // Draw a Bresenham line between the two points
+                DrawThinLine(x0, y0, x1, y1, uiRows, w, chartTop, chartBottom, rising);
+            }
+
+            // ── Live dot at rightmost position ────────────────────────────────────
+            int liveX = w - 2;
+            int liveRow = rows[count - 1];
             if (liveX >= 0 && liveX < w && liveRow >= chartTop && liveRow <= chartBottom)
             {
                 Console.SetCursorPosition(liveX, liveRow);
                 Console.ForegroundColor = ConsoleColor.White;
-                Console.Write("\u25cf");
+                Console.Write("●");   // ● solid circle
+                Console.ResetColor();
+            }
+
+            // ── Price scale labels (right edge) ───────────────────────────────────
+            DrawPriceScale(min, max, range, chartTop, chartBottom, w, uiRows);
+        }
+
+        /// <summary>
+        /// Draws a continuous gap-free line between two consecutive chart points.
+        /// Strategy: for each column x between x0 and x1, calculate the exact y
+        /// value by linear interpolation, then fill every row between that y and
+        /// the y of the previous column — so steep moves leave no gaps.
+        /// </summary>
+        private static void DrawThinLine(int x0, int y0, int x1, int y1,
+            HashSet<int> uiRows, int w, int top, int bottom, bool rising)
+        {
+            if (x0 == x1)
+            {
+                // Pure vertical — fill every row between y0 and y1
+                int yMin = Math.Min(y0, y1), yMax = Math.Max(y0, y1);
+                for (int y = yMin; y <= yMax; y++)
+                    PlotCell(x0, y, uiRows, w, top, bottom, rising, '|');
+                return;
+            }
+
+            // Walk column by column, interpolate y, fill gap from previous column's y
+            int prevY = y0;
+            for (int x = x0; x <= x1; x++)
+            {
+                // Linear interpolation: what row does this x map to?
+                double t = (double)(x - x0) / (x1 - x0);
+                int curY = y0 + (int)Math.Round(t * (y1 - y0));
+                curY = Math.Clamp(curY, top, bottom);
+
+                // Fill every row between prevY and curY so there are no gaps
+                int fillMin = Math.Min(prevY, curY);
+                int fillMax = Math.Max(prevY, curY);
+
+                for (int y = fillMin; y <= fillMax; y++)
+                {
+                    // Pick a char that hints at slope
+                    char ch;
+                    if (fillMin == fillMax) ch = '-';   // flat
+                    else if (y == fillMin) ch = rising ? '/' : '\\';
+                    else if (y == fillMax) ch = rising ? '/' : '\\';
+                    else ch = '|';   // steep fill
+                    PlotCell(x, y, uiRows, w, top, bottom, rising, ch);
+                }
+
+                prevY = curY;
+            }
+        }
+
+        private static void PlotCell(int x, int y, HashSet<int> uiRows,
+            int w, int top, int bottom, bool rising, char ch)
+        {
+            if (x < 0 || x >= w || y < top || y > bottom) return;
+            Console.SetCursorPosition(x, y);
+            Console.ForegroundColor = uiRows.Contains(y)
+                ? ConsoleColor.DarkYellow
+                : (rising ? ConsoleColor.Yellow : ConsoleColor.DarkYellow);
+            Console.Write(ch);
+            Console.ResetColor();
+        }
+
+
+        /// <summary>
+        /// Draws price labels along the right edge of the chart area.
+        /// </summary>
+        private static void DrawPriceScale(decimal min, decimal max, decimal range,
+            int chartTop, int chartBottom, int w, HashSet<int> uiRows)
+        {
+            int labelCount = 5;
+            for (int i = 0; i <= labelCount; i++)
+            {
+                decimal price = min + range * i / labelCount;
+                int row = chartBottom - (int)((double)(price - min) / (double)range
+                                 * (chartBottom - chartTop));
+                row = Math.Clamp(row, chartTop, chartBottom);
+                if (uiRows.Contains(row)) continue;
+
+                string label = price >= 10000
+                    ? $"{price:N0}"
+                    : $"{price:N2}";
+
+                int x = Math.Max(0, w - label.Length - 1);
+                Console.SetCursorPosition(x, row);
+                Console.ForegroundColor = ConsoleColor.DarkGray;
+                Console.Write(label);
                 Console.ResetColor();
             }
         }
 
-        private static void DrawLineSegment(int x0, int y0, int x1, int y1,
-            HashSet<int> uiRows, int w, int top, int bottom)
-        {
-            int steps = Math.Max(1, Math.Abs(x1 - x0));
-            for (int s = 0; s <= steps; s++)
-            {
-                int x = x0 + s;
-                int y = y0 + (int)Math.Round((double)(y1 - y0) * s / steps);
-                DrawChartColumn(x, y, y, uiRows, w, top, bottom);
-            }
-            int yMin = Math.Min(y0, y1), yMax = Math.Max(y0, y1);
-            DrawChartColumn(x0, yMin, yMax, uiRows, w, top, bottom);
-            DrawChartColumn(x1, yMin, yMax, uiRows, w, top, bottom);
-        }
 
-        private static void DrawChartColumn(int x, int yMin, int yMax,
-            HashSet<int> uiRows, int w, int top, int bottom)
-        {
-            if (x < 0 || x >= w) return;
-            yMin = Math.Clamp(yMin, top, bottom);
-            yMax = Math.Clamp(yMax, top, bottom);
-            for (int y = yMin; y <= yMax; y++)
-            {
-                Console.SetCursorPosition(x, y);
-                Console.ForegroundColor = uiRows.Contains(y)
-                    ? ConsoleColor.DarkYellow : ConsoleColor.Yellow;
-                Console.Write(y == yMin && y == yMax ? "\u2502"
-                            : y == yMin ? "\u2575"
-                            : y == yMax ? "\u2577"
-                                        : "\u2502");
-                Console.ResetColor();
-            }
-        }
+
+
+
 
         private static HashSet<int> BuildUiRowSet(int h)
         {
