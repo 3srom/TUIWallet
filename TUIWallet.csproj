@@ -1,0 +1,22 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>TUIWallet</AssemblyName>
+    <RootNamespace>TUIWallet</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Handles all Bitcoin crypto: key generation, signing, PSBT, address derivation -->
+    <PackageReference Include="NBitcoin" Version="7.0.40" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- ZipFile for VanitySearch auto-extraction -->
+    <PackageReference Include="System.IO.Compression" Version="4.3.0" />
+  </ItemGroup>
+
+</Project>
